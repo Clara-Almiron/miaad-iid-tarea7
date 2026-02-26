@@ -1,0 +1,5 @@
+dbt-duckdb>=1.7.0
+prefect>=2.14.0
+prefect-airbyte>=0.3.0
+prefect-dbt>=0.4.0
+python-dotenv>=1.0.0

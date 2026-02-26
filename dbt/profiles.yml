@@ -1,0 +1,7 @@
+maven_fuzzy_factory:
+  outputs:
+    dev:
+      type: duckdb
+      path: "md:airbyte_curso"
+      motherduck_token: "{{ env_var('MOTHERDUCK_TOKEN') }}"
+  target: dev
