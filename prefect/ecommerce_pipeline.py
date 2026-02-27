@@ -4,12 +4,11 @@ MySQL -> Airbyte -> MotherDuck -> dbt
 """
 
 import os
+import time
 from pathlib import Path
 from dotenv import load_dotenv
+import httpx
 from prefect import flow, task, get_run_logger
-from prefect_airbyte.server import AirbyteServer
-from prefect_airbyte.connections import AirbyteConnection
-from prefect_airbyte.flows import run_connection_sync
 from prefect_dbt.cli.commands import DbtCoreOperation
 
 # Cargar variables de entorno
@@ -27,19 +26,33 @@ DBT_PROFILES_DIR = Path.home() / ".dbt"
 def extract_and_load():
     """Extrae datos de MySQL y carga en MotherDuck via Airbyte"""
     logger = get_run_logger()
-
-    server = AirbyteServer(server_host=AIRBYTE_HOST, server_port=AIRBYTE_PORT)
-    connection = AirbyteConnection(
-        airbyte_server=server,
-        connection_id=AIRBYTE_CONNECTION_ID,
-        status_updates=True
-    )
+    base_url = f"http://{AIRBYTE_HOST}:{AIRBYTE_PORT}/api/v1"
 
     logger.info(f"Iniciando sync de Airbyte para connection {AIRBYTE_CONNECTION_ID}")
-    sync_result = run_connection_sync(airbyte_connection=connection)
-    logger.info(f"Sync completado. Registros sincronizados: {sync_result.records_synced}")
 
-    return sync_result.records_synced
+    with httpx.Client(timeout=30) as client:
+        response = client.post(
+            f"{base_url}/connections/sync",
+            json={"connectionId": AIRBYTE_CONNECTION_ID}
+        )
+        response.raise_for_status()
+        job_id = response.json()["job"]["id"]
+        logger.info(f"Job {job_id} iniciado")
+
+        # Esperar a que el job termine
+        while True:
+            status_response = client.get(f"{base_url}/jobs/{job_id}")
+            status_response.raise_for_status()
+            status = status_response.json()["job"]["status"]
+            logger.info(f"Job {job_id} status: {status}")
+
+            if status == "succeeded":
+                logger.info("Sync completado exitosamente")
+                return job_id
+            elif status in ("failed", "cancelled"):
+                raise RuntimeError(f"Airbyte job {job_id} terminó con status: {status}")
+
+            time.sleep(10)
 
 
 @task(name="Transform with dbt")
