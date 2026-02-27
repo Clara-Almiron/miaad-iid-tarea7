@@ -6,6 +6,7 @@ MySQL -> Airbyte -> MotherDuck -> dbt
 import os
 import time
 from pathlib import Path
+from typing import Optional
 from dotenv import load_dotenv
 import httpx
 from prefect import flow, task, get_run_logger
@@ -18,8 +19,10 @@ load_dotenv()
 AIRBYTE_HOST = os.getenv("AIRBYTE_HOST", "localhost")
 AIRBYTE_PORT = int(os.getenv("AIRBYTE_PORT", 8000))
 AIRBYTE_CONNECTION_ID = os.getenv("AIRBYTE_CONNECTION_ID")
+AIRBYTE_USERNAME = os.getenv("AIRBYTE_USERNAME", "airbyte")
+AIRBYTE_PASSWORD = os.getenv("AIRBYTE_PASSWORD", "password")
 DBT_PROJECT_DIR = Path(__file__).parent.parent / "dbt"
-DBT_PROFILES_DIR = Path.home() / ".dbt"
+DBT_PROFILES_DIR = DBT_PROJECT_DIR if (DBT_PROJECT_DIR / "profiles.yml").exists() else Path.home() / ".dbt"
 
 
 @task(name="Extract and Load with Airbyte", retries=2, retry_delay_seconds=60)
@@ -30,18 +33,31 @@ def extract_and_load():
 
     logger.info(f"Iniciando sync de Airbyte para connection {AIRBYTE_CONNECTION_ID}")
 
-    with httpx.Client(timeout=30) as client:
+    with httpx.Client(timeout=30, auth=(AIRBYTE_USERNAME, AIRBYTE_PASSWORD)) as client:
         response = client.post(
             f"{base_url}/connections/sync",
             json={"connectionId": AIRBYTE_CONNECTION_ID}
         )
-        response.raise_for_status()
-        job_id = response.json()["job"]["id"]
-        logger.info(f"Job {job_id} iniciado")
+        if response.status_code == 409:
+            logger.warning("Ya hay un sync en curso, esperando que termine...")
+            # Obtener el job activo
+            jobs_response = client.post(
+                f"{base_url}/jobs/list",
+                json={"configTypes": ["sync"], "configId": AIRBYTE_CONNECTION_ID, "pagination": {"pageSize": 1}}
+            )
+            jobs_response.raise_for_status()
+            job_id = jobs_response.json()["jobs"][0]["job"]["id"]
+            logger.info(f"Job activo encontrado: {job_id}")
+        else:
+            response.raise_for_status()
+            response_data = response.json()
+            logger.info(f"Sync response: {response_data}")
+            job_id = response_data["job"]["id"]
+            logger.info(f"Job {job_id} iniciado")
 
         # Esperar a que el job termine
         while True:
-            status_response = client.get(f"{base_url}/jobs/{job_id}")
+            status_response = client.post(f"{base_url}/jobs/get", json={"id": job_id})
             status_response.raise_for_status()
             status = status_response.json()["job"]["status"]
             logger.info(f"Job {job_id} status: {status}")
@@ -117,7 +133,7 @@ def ecommerce_pipeline(
     run_transform: bool = True,
     run_tests: bool = True,
     run_docs: bool = False,
-    dbt_select: str = None
+    dbt_select: Optional[str] = None
 ):
     """
     Pipeline completo de ELT para Maven Fuzzy Factory
@@ -159,7 +175,7 @@ def ecommerce_pipeline(
 
 
 @flow(name="dbt Only Pipeline")
-def dbt_only_pipeline(select: str = None, run_tests: bool = True):
+def dbt_only_pipeline(select: Optional[str] = None, run_tests: bool = True):
     """Pipeline que solo ejecuta dbt (sin Airbyte)"""
     transform(select=select)
     if run_tests:
