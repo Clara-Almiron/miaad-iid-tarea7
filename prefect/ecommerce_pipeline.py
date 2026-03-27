@@ -22,7 +22,11 @@ AIRBYTE_CONNECTION_ID = os.getenv("AIRBYTE_CONNECTION_ID")
 AIRBYTE_USERNAME = os.getenv("AIRBYTE_USERNAME", "airbyte")
 AIRBYTE_PASSWORD = os.getenv("AIRBYTE_PASSWORD", "password")
 DBT_PROJECT_DIR = Path(__file__).parent.parent / "dbt"
-DBT_PROFILES_DIR = DBT_PROJECT_DIR if (DBT_PROJECT_DIR / "profiles.yml").exists() else Path.home() / ".dbt"
+DBT_PROFILES_DIR = (
+    DBT_PROJECT_DIR
+    if (DBT_PROJECT_DIR / "profiles.yml").exists()
+    else Path.home() / ".dbt"
+)
 
 
 @task(name="Extract and Load with Airbyte", retries=2, retry_delay_seconds=60)
@@ -35,15 +39,18 @@ def extract_and_load():
 
     with httpx.Client(timeout=30, auth=(AIRBYTE_USERNAME, AIRBYTE_PASSWORD)) as client:
         response = client.post(
-            f"{base_url}/connections/sync",
-            json={"connectionId": AIRBYTE_CONNECTION_ID}
+            f"{base_url}/connections/sync", json={"connectionId": AIRBYTE_CONNECTION_ID}
         )
         if response.status_code == 409:
             logger.warning("Ya hay un sync en curso, esperando que termine...")
             # Obtener el job activo
             jobs_response = client.post(
                 f"{base_url}/jobs/list",
-                json={"configTypes": ["sync"], "configId": AIRBYTE_CONNECTION_ID, "pagination": {"pageSize": 1}}
+                json={
+                    "configTypes": ["sync"],
+                    "configId": AIRBYTE_CONNECTION_ID,
+                    "pagination": {"pageSize": 1},
+                },
             )
             jobs_response.raise_for_status()
             job_id = jobs_response.json()["jobs"][0]["job"]["id"]
@@ -88,7 +95,7 @@ def transform(select: str = None):
     result = DbtCoreOperation(
         commands=commands,
         project_dir=str(DBT_PROJECT_DIR),
-        profiles_dir=str(DBT_PROFILES_DIR)
+        profiles_dir=str(DBT_PROFILES_DIR),
     ).run()
 
     return result
@@ -109,7 +116,7 @@ def test_data(select: str = None):
     result = DbtCoreOperation(
         commands=[command],
         project_dir=str(DBT_PROJECT_DIR),
-        profiles_dir=str(DBT_PROFILES_DIR)
+        profiles_dir=str(DBT_PROFILES_DIR),
     ).run()
 
     return result
@@ -121,7 +128,7 @@ def generate_docs():
     result = DbtCoreOperation(
         commands=["dbt docs generate"],
         project_dir=str(DBT_PROJECT_DIR),
-        profiles_dir=str(DBT_PROFILES_DIR)
+        profiles_dir=str(DBT_PROFILES_DIR),
     ).run()
 
     return result
@@ -133,7 +140,7 @@ def ecommerce_pipeline(
     run_transform: bool = True,
     run_tests: bool = True,
     run_docs: bool = False,
-    dbt_select: Optional[str] = None
+    dbt_select: Optional[str] = None,
 ):
     """
     Pipeline completo de ELT para Maven Fuzzy Factory
@@ -168,10 +175,7 @@ def ecommerce_pipeline(
 
     logger.info("Pipeline completado exitosamente!")
 
-    return {
-        "records_synced": records_synced,
-        "status": "success"
-    }
+    return {"records_synced": records_synced, "status": "success"}
 
 
 @flow(name="dbt Only Pipeline")
@@ -197,6 +201,6 @@ if __name__ == "__main__":
             "run_extract": True,
             "run_transform": True,
             "run_tests": True,
-            "run_docs": False
-        }
+            "run_docs": False,
+        },
     )
