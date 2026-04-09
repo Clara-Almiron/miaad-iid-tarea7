@@ -1,0 +1,14 @@
+services:
+  metabase:
+    image: metabase-duckdb:latest
+    container_name: metabase
+    ports:
+      - "3000:3000"
+    environment:
+      MB_PLUGINS_DIR: /plugins
+    volumes:
+      - metabase-data:/metabase.db
+    restart: unless-stopped
+
+volumes:
+  metabase-data:
