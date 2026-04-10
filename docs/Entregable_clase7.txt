@@ -1,0 +1,5 @@
+1. Airbyte: Connection MySQL → MotherDuck funcionando
+2. dbt: Modelos en main_staging y main_marts ejecutándose
+3. Prefect: Pipeline completo con archivo .env configurado
+4. Metabase: Dashboard con al menos 5 visualizaciones y 2 filtros
+5. Capturas: Prefect UI mostrando ejecución exitosa + Dashboard

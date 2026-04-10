@@ -12,7 +12,11 @@ select
     oi.order_id,
     oi.product_id,
     p.product_name,
-    oi.is_primary_item = 1 as is_primary_item,
+    case
+        when cast(oi.is_primary_item as varchar) in ('1', 'MQ==', 'true', 'TRUE', 't')
+            then true
+        else false
+    end as is_primary_item,
     oi.price_usd,
     oi.cogs_usd,
     oi.price_usd - oi.cogs_usd as margin_usd

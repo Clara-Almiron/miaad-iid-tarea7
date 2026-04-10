@@ -18,6 +18,8 @@ models:
         tests:
           - accepted_values:
               values: ['mobile', 'desktop']
+              arguments:
+                values: ['mobile', 'desktop']
 
   - name: stg_orders
     description: "Órdenes limpiadas con margen calculado"
